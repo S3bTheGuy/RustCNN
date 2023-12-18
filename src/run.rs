@@ -1,9 +1,18 @@
+use csv::Writer;
+use std::path::Path;
+use std::time::Instant;
+use std::{fs::File, io::Write};
+
 use mnist::{Mnist, MnistBuilder};
-use rand::Rng;
 
 use crate::cnn_struct::CNN;
+use crate::conv_layer::ActivationFunction;
 
-pub fn run() {
+pub fn run(
+    num_epochs: usize,
+    activation_function_large: ActivationFunction,
+    activation_function_small: ActivationFunction,
+) {
     // Load the MNIST dataset
     let Mnist {
         trn_img,
@@ -23,38 +32,148 @@ pub fn run() {
 
     let _test_data: Vec<Vec<Vec<f32>>> = format_images(tst_img, 10_000);
     let _test_labels: Vec<u8> = tst_lbl;
+    /*
+    let label_mapping = vec![
+        "T-shirt/top",
+        "Trouser",
+        "Pullover",
+        "Dress",
+        "Coat",
+        "Sandal",
+        "Shirt",
+        "Sneaker",
+        "Bag",
+        "Ankle boot",
+    ];
+    */
 
     // Create a new CNN and specify its layers
     let mut cnn: CNN = CNN::new();
-    cnn.add_conv_layer(28, 1, 6, 5, 1);
+    cnn.add_conv_layer(28, 1, 6, 5, 1, activation_function_large);
     cnn.add_mxpl_layer(24, 6, 2, 2);
-    cnn.add_conv_layer(12, 6, 9, 3, 1);
+    cnn.add_conv_layer(12, 6, 9, 3, 1, activation_function_small);
     cnn.add_mxpl_layer(10, 9, 2, 2);
     cnn.add_fcl_layer(5, 9, 10);
-
     let mut prev: Vec<bool> = vec![false; 100];
-    let mut count: u16 = 0;
 
-    while success(&prev) < 0.90 {
-        // Get a random image from the training set
-        let mut rng = rand::thread_rng();
-        let index: usize = rng.gen_range(0..=49_999);
+    let log_file_name = if Path::new("log.csv").exists() {
+        format!("{:?}_log.csv", activation_function_large)
+    } else {
+        "log.csv".to_string()
+    };
 
-        // Train the CNN on the image
-        let output: Vec<f32> = cnn.forward_propagate(vec![train_data[index].clone()]);
-        let result: bool = highest_index(output) == train_labels[index];
+    let output_file_name = if Path::new("output.csv").exists() {
+        format!("{:?}_output.csv", activation_function_large)
+    } else {
+        "output.csv".to_string()
+    };
 
-        cnn.back_propagate(train_labels[index] as usize);
+    let mut log_file = File::create(&log_file_name).expect("create failed");
+    log_file
+        .write_all(b"Epoch,Activation Function,Accuracy\n")
+        .expect("write failed");
 
-        // Keep track of the last 100 results
-        prev.pop();
-        prev.insert(0, result);
-        if count % 500 == 499 {
-            println!("{}", success(&prev));
+    // Create the CSV file and write the header
+    let mut file = File::create(&output_file_name).expect("create failed");
+    file.write_all(b"Epoch,Accuracy,Total Predictions,Wrong Predictions\n")
+        .expect("write failed");
+
+    // Initialize a 10x10 confusion matrix
+    let mut confusion_matrix: [[u16; 10]; 10] = [[0; 10]; 10];
+
+    // Create the CSV file and write the header
+    let mut file = File::create(&output_file_name).expect("create failed");
+    file.write_all(b"Epoch,Accuracy,Total Predictions,Wrong Predictions\n")
+        .expect("write failed");
+
+    // Create a new instance of Instant before the training starts
+    let start_time = Instant::now();
+
+    // Initialize counters at the start of each epoch
+    let mut total_predictions: u128 = 0;
+    let mut correct_predictions: u128 = 0;
+    let mut wrong_predictions: u128 = 0;
+
+    // Calculate the accuracy
+    let accuracy = correct_predictions as f64 / total_predictions as f64;
+
+    for _epoch in 0..num_epochs {
+        for index in 0..train_data.len() {
+            // Train the CNN on the image
+            let output: Vec<f32> = cnn.forward_propagate(vec![train_data[index].clone()]);
+            let result: bool = highest_index(output.clone()) == train_labels[index];
+
+            // Get the predicted class and the actual class
+            let predicted_class = highest_index(output.clone());
+            let actual_class = train_labels[index] as usize;
+
+            // Increment total_predictions
+            total_predictions += 1;
+
+            // If the prediction is correct, increment correct_predictions
+            if result {
+                correct_predictions += 1;
+            } else {
+                wrong_predictions += 1;
+            }
+
+            // Update confusion matrix
+            confusion_matrix[actual_class][predicted_class as usize] += 1;
+
+            cnn.back_propagate(train_labels[index] as usize);
+
+            // Keep track of the last 100 results
+            prev.pop();
+            prev.insert(0, result);
+
+            let accuracy = if total_predictions > 0 {
+                correct_predictions as f64 / total_predictions as f64
+            } else {
+                0.0
+            };
+
+            // print the results every image
+            if index % 1 == 0 {
+                let percentage_done = (index as f32 / train_data.len() as f32) * 100.0;
+                println!(
+                    "Epoch: {}, Image: {}, Activation Function: {:?}, Accuracy: {:.2}%, Time: {:.2} seconds, Done: {:.2}%",
+                    _epoch,
+                    index,
+                    activation_function_large,
+                    success(&prev) * 100.0,
+                    start_time.elapsed().as_secs_f32(),
+                    percentage_done
+                );
+            }
+
+            file.write_all(
+                format!(
+                    "{},{},{},{}\n",
+                    _epoch, accuracy, total_predictions, wrong_predictions
+                )
+                .as_bytes(),
+            )
+            .expect("write failed");
         }
-        count += 1;
+        // At the end of each epoch, write the epoch, activation function, and accuracy to the log file
+        log_file
+            .write_all(
+                format!(
+                    "{},{:?},{:.2}\n",
+                    _epoch + 1,
+                    activation_function_large,
+                    success(&prev)
+                )
+                .as_bytes(),
+            )
+            .expect("write failed");
     }
-    println!("{}", success(&prev));
+
+    // After all epochs have been processed, write the confusion matrix to a CSV file
+    let mut writer = Writer::from_path("confusion_matrix.csv").expect("Unable to create file");
+    for row in &confusion_matrix {
+        writer.serialize(row).expect("Unable to write row");
+    }
 }
 
 /// Formats the dataset into a 3D vector

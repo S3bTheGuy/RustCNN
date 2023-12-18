@@ -1,6 +1,6 @@
 use rand_distr::{Distribution, Normal};
 
-use crate::{LEARNING_RATE, layer::Layer};
+use crate::{layer::Layer, LEARNING_RATE};
 
 /// Sigmoid activation function
 pub fn sigmoid(x: f32) -> f32 {
@@ -26,19 +26,16 @@ pub struct FullyConnectedLayer {
 
 impl FullyConnectedLayer {
     /// Creates a new fully connected layer with the given input width, input depth, and output
-    pub fn new(
-        input_width: usize,
-        input_depth: usize,
-        output_size: usize,
-    ) -> FullyConnectedLayer {
+    pub fn new(input_width: usize, input_depth: usize, output_size: usize) -> FullyConnectedLayer {
         // Calculate the input size from the input width and depth
         let input_size: usize = input_depth * (input_width * input_width);
         // Initialize empty vectors for the biases and weights
         let mut biases: Vec<f32> = vec![];
         let mut weights: Vec<Vec<f32>> = vec![vec![]; input_size];
         // Use He initialisation by using a mean of 0.0 and a standard deviation of sqrt(2/input_neurons)
-        let normal = Normal::new(0.0, (2.0/(input_size.pow(2) * input_depth) as f32).sqrt()).unwrap();
-        
+        let normal =
+            Normal::new(0.0, (2.0 / (input_size.pow(2) * input_depth) as f32).sqrt()).unwrap();
+
         for _ in 0..output_size {
             // Initialize the biases with a small positive value
             biases.push(0.1);
@@ -108,7 +105,7 @@ impl Layer for FullyConnectedLayer {
         for j in 0..self.output_size {
             error[j] *= inv_deriv_sigmoid(self.output[j]);
         }
-        
+
         let mut flat_error: Vec<f32> = vec![0.0; self.input_size];
 
         // Update the weights and biases according to their derivatives
@@ -116,8 +113,7 @@ impl Layer for FullyConnectedLayer {
             self.biases[j] -= error[j] * LEARNING_RATE;
             for i in 0..self.input_size {
                 flat_error[i] += error[j] * self.weights[i][j];
-                self.weights[i][j] -=
-                    error[j] * self.input[i] * LEARNING_RATE;
+                self.weights[i][j] -= error[j] * self.input[i] * LEARNING_RATE;
             }
         }
 

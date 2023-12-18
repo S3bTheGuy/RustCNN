@@ -1,3 +1,4 @@
+use crate::conv_layer::ActivationFunction;
 use crate::{
     conv_layer::ConvLayer, fully_connected_layer::FullyConnectedLayer, layer::Layer,
     max_pooling_layer::MaxPoolingLayer,
@@ -28,10 +29,17 @@ impl CNN {
         num_filters: usize,
         kernel_size: usize,
         stride: usize,
+        activation_function: ActivationFunction,
     ) {
         // Create a new convolutional layer with the specified parameters.
-        let conv_layer: ConvLayer =
-            ConvLayer::new(input_size, input_depth, num_filters, kernel_size, stride);
+        let conv_layer: ConvLayer = ConvLayer::new(
+            input_size,
+            input_depth,
+            num_filters,
+            kernel_size,
+            stride,
+            activation_function,
+        );
         let conv_layer_ptr = Box::new(conv_layer) as Box<dyn Layer>;
         // Push the layer onto the list of layers in the neural network.
         self.layers.push(conv_layer_ptr)
@@ -69,6 +77,8 @@ impl CNN {
 
         // Forward propagate through each layer of the network
         for i in 0..self.layers.len() {
+            // Matrix operation: Forward propagation through each layer
+            // In LaTeX: output = f(W * input + b)
             output = self.layers[i].forward_propagate(output);
         }
 
@@ -83,6 +93,8 @@ impl CNN {
         for i in 0..10 {
             let desired: u8 = (label == i) as u8;
             let last_index: usize = self.layers.len() - 1;
+            // Matrix operation: Calculate the error for each output neuron
+            // In LaTeX: error = 2/10 * (output - desired)
             error.push((2.0 / 10.0) * (self.layers[last_index].get_output(i) - desired as f32));
         }
 
@@ -93,9 +105,12 @@ impl CNN {
     pub fn back_propagate(&mut self, label: usize) {
         // Retrieve the last layer error to backpropagate
         let mut error: Vec<Vec<Vec<f32>>> = self.last_layer_error(label);
-        
+
         // Iterate backwards through the layers and backpropagate the error
         for i in (0..self.layers.len()).rev() {
+            // Matrix operation and Gradient descent: Backpropagation through each layer
+            // In LaTeX: error = f'(W * input + b) * error
+            // Gradient descent: W = W - lr * error * input, b = b - lr * error
             error = self.layers[i].back_propagate(error);
         }
     }

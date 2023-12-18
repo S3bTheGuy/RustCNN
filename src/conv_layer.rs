@@ -1,6 +1,6 @@
-use rand_distr::{Normal, Distribution};
+use rand_distr::{Distribution, Normal};
 
-use crate::{LEARNING_RATE, layer::Layer};
+use crate::{layer::Layer, LEARNING_RATE};
 
 /// Defines a `ConvolutionalLayer` structure.
 pub struct ConvLayer {
@@ -14,6 +14,56 @@ pub struct ConvLayer {
     kernels: Vec<Vec<Vec<Vec<f32>>>>,
     input: Vec<Vec<Vec<f32>>>,
     output: Vec<Vec<Vec<f32>>>,
+    activation_function: ActivationFunction,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum ActivationFunction {
+    // all activation functions should be added here
+    ReLU,
+    LeakyReLU,
+    Tanh,
+    Mish,
+    ELU,
+    Swish,
+}
+
+fn relu(x: f32) -> f32 {
+    x.max(0.0)
+}
+
+fn leaky_relu(x: f32) -> f32 {
+    if x >= 0.0 {
+        x
+    } else {
+        0.01 * x
+    }
+}
+
+fn tanh(x: f32) -> f32 {
+    x.tanh()
+}
+
+fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + (-x).exp())
+}
+// f(x) = x * tanh(zeta(x))
+// where, zeta(x) = ln(1 + e^x)
+fn mish(x: f32) -> f32 {
+    x * (1.0 + x.exp()).ln().tanh()
+}
+
+// f(x) = x * sigmoid(x)
+fn swish(x: f32) -> f32 {
+    x * sigmoid(x)
+}
+
+fn elu(x: f32) -> f32 {
+    if x >= 0.0 {
+        x
+    } else {
+        0.01 * (x.exp() - 1.0)
+    }
 }
 
 impl ConvLayer {
@@ -24,13 +74,18 @@ impl ConvLayer {
         num_filters: usize,
         kernel_size: usize,
         stride: usize,
+        activation_function: ActivationFunction,
     ) -> ConvLayer {
         // Initialize the biases and kernels with empty vectors
         let mut biases = vec![];
         let mut kernels = vec![vec![vec![vec![]; kernel_size]; input_depth]; num_filters];
 
         // Use He initialisation by using a mean of 0.0 and a standard deviation of sqrt(2/(input_channels * num_params))
-        let normal = Normal::new(0.0, (2.0/(input_depth*kernel_size.pow(2)) as f32).sqrt()).unwrap();
+        let normal = Normal::new(
+            0.0,
+            (2.0 / (input_depth * kernel_size.pow(2)) as f32).sqrt(),
+        )
+        .unwrap();
 
         // Fill the biases and kernels with random values from the normal distribution
         for f in 0..num_filters {
@@ -58,6 +113,7 @@ impl ConvLayer {
             kernels,
             input: vec![],
             output: vec![vec![vec![0.0; output_size]; output_size]; num_filters],
+            activation_function,
         };
 
         layer
@@ -65,7 +121,6 @@ impl ConvLayer {
 }
 
 impl Layer for ConvLayer {
-
     /// Forward propagates the input data through the Convolutional layer.
     fn forward_propagate(&mut self, input: Vec<Vec<Vec<f32>>>) -> Vec<Vec<Vec<f32>>> {
         // Store the input data in a member variable for future reference.
@@ -81,14 +136,14 @@ impl Layer for ConvLayer {
                 for f in 0..self.num_filters {
                     // Initialize the output value with the bias value for the filter.
                     self.output[f][y][x] = self.biases[f];
-                    
+
                     // Iterate through each input channel.
                     for f_i in 0..self.input_depth {
                         for y_k in 0..self.kernel_size {
                             for x_k in 0..self.kernel_size {
                                 // Get the value of the input at the current point.
                                 let val: f32 = input[f_i][top + y_k][left + x_k];
-                                // Store the result of the convolution in the output matrix.
+                                // Matrix operation: Multiply the kernel value with the input value and add it to the output
                                 self.output[f][y][x] += self.kernels[f][f_i][y_k][x_k] * val;
                             }
                         }
@@ -97,15 +152,63 @@ impl Layer for ConvLayer {
             }
         }
 
-        // Apply the ReLU activation function to the output.
-        for f in 0..self.num_filters {
-            for y in 0..self.output_size {
-                for x in 0..self.output_size {
-                    self.output[f][y][x] = self.output[f][y][x].max(0.0);
+        // Apply the chosen activation function to the output.
+        match self.activation_function {
+            ActivationFunction::ReLU => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = relu(self.output[f][y][x]);
+                        }
+                    }
+                }
+            }
+            ActivationFunction::LeakyReLU => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = leaky_relu(self.output[f][y][x]);
+                        }
+                    }
+                }
+            }
+            ActivationFunction::Tanh => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = tanh(self.output[f][y][x]);
+                        }
+                    }
+                }
+            }
+            ActivationFunction::Mish => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = mish(self.output[f][y][x]);
+                        }
+                    }
+                }
+            }
+            ActivationFunction::ELU => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = elu(self.output[f][y][x]);
+                        }
+                    }
+                }
+            }
+            ActivationFunction::Swish => {
+                for f in 0..self.num_filters {
+                    for y in 0..self.output_size {
+                        for x in 0..self.output_size {
+                            self.output[f][y][x] = swish(self.output[f][y][x]);
+                        }
+                    }
                 }
             }
         }
-
         self.output.clone()
     }
 
@@ -126,6 +229,7 @@ impl Layer for ConvLayer {
                 for f in 0..self.num_filters {
                     // Only update parameters which affect the output.
                     if self.output[f][y][x] > 0.0 {
+                        // Gradient descent: Update the bias
                         self.biases[f] -= error[f][y][x] * LEARNING_RATE;
                         for y_k in 0..self.kernel_size {
                             for x_k in 0..self.kernel_size {
@@ -133,8 +237,9 @@ impl Layer for ConvLayer {
                                     // Update the error for the previous layer.
                                     prev_error[f_i][top + y_k][left + x_k] +=
                                         self.kernels[f][f_i][y_k][x_k] * error[f][y][x];
-                                    // Store the new kernel values.
-                                    new_kernels[f][f_i][y_k][x_k] -= self.input[f_i][top + y_k][left + x_k]
+                                    // Gradient descent: Update the kernel values
+                                    new_kernels[f][f_i][y_k][x_k] -= self.input[f_i][top + y_k]
+                                        [left + x_k]
                                         * error[f][y][x]
                                         * LEARNING_RATE;
                                 }

@@ -66,7 +66,7 @@ impl Layer for MaxPoolingLayer {
         self.output.clone()
     }
 
-    /// Back propagates the error in a max pooling layer. 
+    /// Back propagates the error in a max pooling layer.
     /// Takes in the error matrix and returns the previous error matrix
     fn back_propagate(&mut self, error: Vec<Vec<Vec<f32>>>) -> Vec<Vec<Vec<f32>>> {
         let mut prev_error: Vec<Vec<Vec<f32>>> =
